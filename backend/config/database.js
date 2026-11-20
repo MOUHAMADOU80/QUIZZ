@@ -2,13 +2,17 @@
 const { Pool } = require("pg");
 require("dotenv").config();
 
-// Configuration de la connexion à PostgreSQL
 const pool = new Pool({
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD
+    password: process.env.DB_PASSWORD,
+
+    // SSL activé en production
+    ssl: process.env.NODE_ENV === "production"
+        ? { rejectUnauthorized: false }
+        : false
 });
 
 // Vérification de la connexion
