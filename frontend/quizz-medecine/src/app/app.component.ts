@@ -9,7 +9,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
     <header class="topbar">
       <a class="brand" routerLink="/">
         <span class="brand-mark">Q</span>
-        <span>QUIZZ<span class="brand-light">_MEDECINE</span></span>
+        <span>QUIZZ<span class="brand-light">_DAM</span></span>
       </a>
       <nav>
         <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}">Accueil</a>
