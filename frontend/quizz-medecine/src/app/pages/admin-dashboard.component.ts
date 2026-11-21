@@ -1,9 +1,17 @@
-
+import { DatePipe } from '@angular/common';
 import { Component } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../services/api.service';
 
 type AdminSection = 'accueil' | 'qcm' | 'participants' | 'classement';
+interface Participant {
+  id: number;
+  nom: string;
+  prenom: string;
+  cycle: string;
+  date_inscription: string;
+  statut_tentative: string | null;
+}
 
 interface OptionForm {
   id?: number;
@@ -34,12 +42,14 @@ interface QuizInfo {
   actif: boolean;
   duree_minutes: number;
   nombre_questions: number;
+  classement_public: boolean;
+  date_publication: string | null;
 }
 
 @Component({
   selector: 'app-admin-dashboard',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, DatePipe],
 
   template: `
     <div class="admin-layout">
@@ -503,32 +513,167 @@ interface QuizInfo {
           </section>
         }
 
-        <!-- PARTICIPANTS -->
+      <!-- PARTICIPANTS -->
 
-        @if (section === 'participants') {
+@if (section === 'participants') {
 
-          <div class="placeholder">
-            <h2>Gestion des participants</h2>
-            <p>
-              Cette rubrique sera connectée à l'API des participants.
-            </p>
-          </div>
+  <section class="participants-section">
 
-        }
+    <div class="qcm-heading">
+      <div>
+        <h2>Gestion des participants</h2>
+        <p>Consultez les participants inscrits au QUIZZ_MEDECINE.</p>
+      </div>
+    </div>
+
+    @if (chargementParticipants) {
+      <p class="loading">Chargement des participants...</p>
+    }
+
+    @if (erreurParticipants) {
+      <div class="error">{{ erreurParticipants }}</div>
+    }
+
+    @if (!chargementParticipants && !erreurParticipants) {
+
+      <div class="progress-card">
+        <strong>Nombre total de participants : {{ participants.length }}</strong>
+      </div>
+
+      @if (participants.length > 0) {
+
+        <div class="table-responsive">
+          <table class="participants-table">
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Prénom</th>
+                <th>Cycle</th>
+                <th>Date d'inscription</th>
+                <th>Statut du QCM</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              @for (participant of participants; track participant.id) {
+                <tr>
+                  <td>{{ participant.nom }}</td>
+                  <td>{{ participant.prenom }}</td>
+                  <td>{{ participant.cycle }}</td>
+                  <td>{{ participant.date_inscription | date:'dd/MM/yyyy' }}</td>
+                  <td>
+                    <span>
+                      {{ participant.statut_tentative || 'Non commencé' }}
+                    </span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+      } @else {
+        <div class="empty">
+          <h3>Aucun participant inscrit</h3>
+          <p>Les participants apparaîtront ici dès leur inscription.</p>
+        </div>
+      }
+
+    }
+
+  </section>
+
+}
 
         <!-- CLASSEMENT -->
 
-        @if (section === 'classement') {
+        <!-- CLASSEMENT -->
 
-          <div class="placeholder">
-            <h2>Gestion du classement</h2>
-            <p>
-              Cette rubrique permettra de contrôler la publication
-              du classement public.
-            </p>
-          </div>
+@if (section === 'classement') {
 
-        }
+  <div class="section-content">
+
+    <h2>Gestion du classement</h2>
+    <p>Résultats des participants au QCM.</p>
+    @if (chargementStatut) {
+  <p>Chargement du statut de publication...</p>
+} @else {
+
+  @if (quizInfo?.classement_public) {
+
+    <p>Le classement est actuellement publié.</p>
+
+    <button
+      type="button"
+      (click)="masquerClassement()">
+      Masquer le classement
+    </button>
+
+  } @else {
+
+    <p>Le classement est actuellement masqué.</p>
+
+    <button
+      type="button"
+      (click)="publierClassement()">
+      Publier le classement
+    </button>
+
+  }
+
+}
+
+@if (messageStatut) {
+  <p>{{ messageStatut }}</p>
+}
+
+    @if (chargementClassement) {
+      <p>Chargement du classement...</p>
+    }
+
+    @if (erreurClassement) {
+      <p class="error-message">{{ erreurClassement }}</p>
+    }
+
+    @if (!chargementClassement && !erreurClassement) {
+
+      @if (classement.length === 0) {
+        <p>Aucun participant n'a encore terminé le QCM.</p>
+      } @else {
+
+        <div class="table-responsive">
+          <table class="participants-table">
+            <thead>
+              <tr>
+                <th>Rang</th>
+                <th>Nom</th>
+                <th>Prénom</th>
+                <th>Cycle</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              @for (resultat of classement; track $index) {
+                <tr>
+                  <td>{{ resultat.rang }}</td>
+                  <td>{{ resultat.nom }}</td>
+                  <td>{{ resultat.prenom }}</td>
+                  <td>{{ resultat.cycle }}</td>
+                  <td>{{ resultat.score }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+      }
+
+    }
+
+  </div>
+
+}
 
       </main>
 
@@ -1181,6 +1326,38 @@ interface QuizInfo {
       gap: 10px;
       margin-top: 20px;
     }
+      /* TABLEAU DES PARTICIPANTS */
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  background: white;
+  border: 1px solid #e9edf4;
+  border-radius: 12px;
+}
+
+.participants-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 650px;
+}
+
+.participants-table th,
+.participants-table td {
+  padding: 15px;
+  text-align: left;
+  border-bottom: 1px solid #edf0f5;
+  font-size: 12px;
+}
+
+.participants-table th {
+  background: #f7f8fb;
+  color: #647089;
+}
+
+.participants-table td {
+  color: #172033;
+}
 
     /* RESPONSIVE */
 
@@ -1284,6 +1461,12 @@ interface QuizInfo {
 })
 
 export class AdminDashboardComponent {
+  participants: Participant[] = [];
+  chargementParticipants = false;
+  erreurParticipants = '';
+  classement: any[] = [];
+  chargementClassement = false;
+  erreurClassement = '';
 
   private readonly quizId = 1;
 
@@ -1306,6 +1489,41 @@ export class AdminDashboardComponent {
   erreurFormulaire = '';
 
   questionEnCoursId: number | null = null;
+  chargerParticipants(): void {
+  this.chargementParticipants = true;
+  this.erreurParticipants = '';
+
+  this.api.get<{ participants: Participant[] }>('/participants')
+    .subscribe({
+      next: (reponse) => {
+        this.participants = reponse.participants;
+        this.chargementParticipants = false;
+      },
+      error: (error) => {
+        console.error('Erreur chargement participants :', error);
+        this.erreurParticipants = 'Impossible de charger les participants.';
+        this.chargementParticipants = false;
+      }
+    });
+}
+chargerClassement(): void {
+  this.chargementClassement = true;
+  this.erreurClassement = '';
+
+  this.api.get<{ classement: any[] }>(
+    `/quiz/${this.quizId}/classement`
+  ).subscribe({
+    next: (reponse) => {
+      this.classement = reponse.classement;
+      this.chargementClassement = false;
+    },
+    error: (error) => {
+      console.error('Erreur chargement classement :', error);
+      this.erreurClassement = 'Impossible de charger le classement.';
+      this.chargementClassement = false;
+    }
+  });
+}
 
   form = this.formulaireVide();
 
@@ -1326,15 +1544,22 @@ export class AdminDashboardComponent {
     return titres[this.section];
   }
 
-  changerSection(section: AdminSection): void {
-
+ changerSection(section: AdminSection): void {
     this.section = section;
-
     this.message = '';
     this.erreur = '';
 
+    if (section === 'classement') {
+      this.chargerClassement();
+      this.chargerStatutQuiz();
+    }
+
     if (section === 'qcm') {
       this.chargerQuestions();
+    }
+
+    if (section === 'participants') {
+      this.chargerParticipants();
     }
   }
 
@@ -1612,6 +1837,46 @@ export class AdminDashboardComponent {
     });
 
   }
+  publierClassement(): void {
+
+  this.api.patch<{ message: string; quiz: Partial<QuizInfo> }>(
+    `/quiz/${this.quizId}/classement/publier`
+  ).subscribe({
+
+    next: (reponse) => {
+      this.messageStatut = reponse.message;
+      this.chargerStatutQuiz();
+    },
+
+    error: (erreur) => {
+      this.messageStatut = erreur.error?.message ||
+        'Erreur lors de la publication du classement.';
+    }
+
+  });
+
+}
+
+
+masquerClassement(): void {
+
+  this.api.patch<{ message: string; quiz: Partial<QuizInfo> }>(
+    `/quiz/${this.quizId}/classement/masquer`
+  ).subscribe({
+
+    next: (reponse) => {
+      this.messageStatut = reponse.message;
+      this.chargerStatutQuiz();
+    },
+
+    error: (erreur) => {
+      this.messageStatut = erreur.error?.message ||
+        'Erreur lors du masquage du classement.';
+    }
+
+  });
+
+}
 
   /* ACTIVER LE QCM */
 

@@ -42,9 +42,10 @@ router.get("/:quizId", verifierAdmin, async (req, res) => {
 
         const resultat = await db.query(
             `SELECT id, titre, description, actif,
-                    duree_minutes, nombre_questions
-             FROM quiz
-             WHERE id = $1`,
+            duree_minutes, nombre_questions,
+            classement_public, date_publication
+            FROM quiz
+            WHERE id = $1`,
             [quizId]
         );
 
@@ -341,4 +342,178 @@ router.get("/actif/questions", async (req, res) => {
         });
     }
 });
+// Récupérer le classement d'un QCM (administrateur)
+router.get("/:quizId/classement", verifierAdmin, async (req, res) => {
+    try {
+        const { quizId } = req.params;
+
+        if (!/^\d+$/.test(quizId)) {
+            return res.status(400).json({
+                message: "Identifiant du QCM invalide."
+            });
+        }
+
+        const resultat = await db.query(
+            `SELECT
+                RANK() OVER (ORDER BY t.score DESC) AS rang,
+                p.nom,
+                p.prenom,
+                p.cycle,
+                t.score,
+                t.statut,
+                t.date_fin
+             FROM tentatives t
+             INNER JOIN participants p
+                ON p.id = t.participant_id
+             WHERE t.quiz_id = $1
+               AND t.statut IN ('Terminée', 'Expirée')
+             ORDER BY t.score DESC, t.date_fin ASC`,
+            [Number(quizId)]
+        );
+
+        res.json({
+            message: "Classement récupéré avec succès.",
+            classement: resultat.rows
+        });
+
+    } catch (error) {
+        console.error("Erreur récupération classement :", error.message);
+
+        res.status(500).json({
+            message: "Erreur lors de la récupération du classement."
+        });
+    }
+});
+// Publier le classement (administrateur)
+router.patch("/:quizId/classement/publier", verifierAdmin, async (req, res) => {
+    try {
+        const { quizId } = req.params;
+
+        const resultat = await db.query(
+            `UPDATE quiz
+             SET classement_public = TRUE,
+                 date_publication = NOW()
+             WHERE id = $1
+             RETURNING classement_public, date_publication`,
+            [quizId]
+        );
+
+        if (resultat.rows.length === 0) {
+            return res.status(404).json({
+                message: "QCM introuvable."
+            });
+        }
+
+        res.json({
+            message: "Classement publié avec succès.",
+            quiz: resultat.rows[0]
+        });
+
+    } catch (erreur) {
+        console.error("Erreur publication classement :", erreur);
+
+        res.status(500).json({
+            message: "Erreur lors de la publication du classement."
+        });
+    }
+});
+
+
+// Masquer le classement (administrateur)
+router.patch("/:quizId/classement/masquer", verifierAdmin, async (req, res) => {
+    try {
+        const { quizId } = req.params;
+
+        const resultat = await db.query(
+            `UPDATE quiz
+             SET classement_public = FALSE
+             WHERE id = $1
+             RETURNING classement_public, date_publication`,
+            [quizId]
+        );
+
+        if (resultat.rows.length === 0) {
+            return res.status(404).json({
+                message: "QCM introuvable."
+            });
+        }
+
+        res.json({
+            message: "Classement masqué avec succès.",
+            quiz: resultat.rows[0]
+        });
+
+    } catch (erreur) {
+        console.error("Erreur masquage classement :", erreur);
+
+        res.status(500).json({
+            message: "Erreur lors du masquage du classement."
+        });
+    }
+});
+
+// Consulter le classement public
+router.get("/:quizId/classement/public", async (req, res) => {
+    try {
+        const { quizId } = req.params;
+
+        if (!/^\d+$/.test(quizId)) {
+            return res.status(400).json({
+                message: "Identifiant du QCM invalide."
+            });
+        }
+
+        // Vérifier si le classement est publié
+        const quiz = await db.query(
+            `SELECT classement_public
+             FROM quiz
+             WHERE id = $1`,
+            [Number(quizId)]
+        );
+
+        if (quiz.rows.length === 0) {
+            return res.status(404).json({
+                message: "QCM introuvable."
+            });
+        }
+
+        // Ne pas transmettre les résultats si le classement est masqué
+        if (!quiz.rows[0].classement_public) {
+            return res.json({
+                publie: false,
+                message: "Le classement n'est pas encore publié."
+            });
+        }
+
+        // Récupérer les résultats
+        const resultat = await db.query(
+            `SELECT
+                RANK() OVER (ORDER BY t.score DESC) AS rang,
+                p.nom,
+                p.prenom,
+                p.cycle,
+                t.score
+             FROM tentatives t
+             INNER JOIN participants p
+                ON p.id = t.participant_id
+             WHERE t.quiz_id = $1
+               AND t.statut IN ('Terminée', 'Expirée')
+             ORDER BY t.score DESC, t.date_fin ASC`,
+            [Number(quizId)]
+        );
+
+        res.json({
+            publie: true,
+            classement: resultat.rows
+        });
+
+    } catch (erreur) {
+        console.error("Erreur classement public :", erreur);
+
+        res.status(500).json({
+            message: "Erreur lors de la récupération du classement."
+        });
+    }
+});
+
 module.exports = router;

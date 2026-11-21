@@ -19,7 +19,21 @@ import { ApiService } from '../services/api.service';
 export class RankingComponent implements OnInit {
   private api = inject(ApiService); loading = true; published = false; rows: any[] = [];
   ngOnInit(): void {
-    // L'endpoint public de classement sera raccordé lorsque sa route backend sera confirmée.
-    this.loading = false;
-  }
+  this.api.get<{
+    publie: boolean;
+    classement?: any[];
+    message?: string;
+  }>('/quiz/1/classement/public').subscribe({
+    next: (reponse) => {
+      this.published = reponse.publie;
+      this.rows = reponse.classement || [];
+      this.loading = false;
+    },
+    error: (erreur) => {
+      console.error('Erreur de chargement du classement :', erreur);
+      this.published = false;
+      this.loading = false;
+    }
+  });
+}
 }

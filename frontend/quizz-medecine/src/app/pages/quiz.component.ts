@@ -49,8 +49,10 @@ export class QuizComponent implements OnInit, OnDestroy {
   letters = ['A','B','C','D']; timer?: ReturnType<typeof setInterval>;
   get current(): Question | undefined { return this.questions[this.index]; }
   get progress(): number { return this.questions.length ? ((this.index+1)/this.questions.length)*100 : 0; }
-  get answeredCount(): number { return this.answers.size; }
-
+  get answeredCount(): number {
+    return Array.from(this.answers.values())
+    .filter(options => options.length > 0).length;
+  }
   ngOnInit(): void {
     const p = this.session.getParticipant(), t = this.session.getTentative();
     if (!p || !t) { this.router.navigate(['/identification']); return; }
@@ -68,10 +70,14 @@ export class QuizComponent implements OnInit, OnDestroy {
     });
   }
   loadTime(pid: number, tid: number): void {
-    this.api.get<any>(`/participants/${pid}/tentative/${tid}/temps`).subscribe({
-      next: d => { if (typeof d.temps_restant === 'number') this.remaining = d.temps_restant; }
-    });
-  }
+  this.api.get<any>(`/participants/${pid}/tentative/${tid}/temps`).subscribe({
+    next: d => {
+      if (typeof d.secondes_restantes === 'number') {
+        this.remaining = d.secondes_restantes;
+      }
+    }
+  });
+}
   isSelected(id: number): boolean { return (this.answers.get(this.current?.id ?? -1) ?? []).includes(id); }
   toggle(id: number): void {
     if (!this.current) return;
@@ -80,17 +86,21 @@ export class QuizComponent implements OnInit, OnDestroy {
     this.answers.set(qid, next);
     const p = this.session.getParticipant(), t = this.session.getTentative();
     if (p && t) this.api.post(`/participants/${p.id}/tentative/${t.id}/reponses`,
-      { question_id: qid, options: next }).subscribe({ error: e => this.error = e.error?.message ?? 'Erreur d’enregistrement.' });
+  { questionId: qid, optionsIds: next }).subscribe({
+    error: e => this.error = e.error?.message ?? 'Erreur d’enregistrement.'
+  });
   }
   previous(): void { if (this.index > 0) this.index--; }
   next(): void { if (this.index < this.questions.length-1) this.index++; }
   formatTime(): string { return `${Math.floor(this.remaining/60).toString().padStart(2,'0')}:${(this.remaining%60).toString().padStart(2,'0')}`; }
   submit(): void {
-    if (this.answers.size < this.questions.length && this.remaining > 0) {
-      this.error = 'Répondez à toutes les questions avant de soumettre.'; return;
-    }
-    this.finish();
+  if (this.answeredCount < this.questions.length && this.remaining > 0) {
+    this.error = 'Répondez à toutes les questions avant de soumettre.';
+    return;
   }
+
+  this.finish();
+}
   private finishExpired(): void { this.finish(); }
   private finish(): void {
     const p = this.session.getParticipant(), t = this.session.getTentative();

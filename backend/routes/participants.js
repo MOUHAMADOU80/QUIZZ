@@ -1,9 +1,38 @@
 
 const express = require("express");
 const router = express.Router();
-
 const db = require("../config/database");
+const verifierAdmin = require("../middlewares/authMiddleware");
 
+// Récupérer tous les participants (administrateur)
+router.get("/", verifierAdmin, async (req, res) => {
+    try {
+        const resultat = await db.query(
+            `SELECT
+                p.id,
+                p.nom,
+                p.prenom,
+                p.cycle,
+                p.date_inscription,
+                t.statut AS statut_tentative
+             FROM participants p
+             LEFT JOIN tentatives t ON t.participant_id = p.id
+             ORDER BY p.date_inscription DESC`
+        );
+
+        res.json({
+            message: "Liste des participants récupérée avec succès.",
+            participants: resultat.rows
+        });
+
+    } catch (error) {
+        console.error("Erreur récupération participants :", error.message);
+
+        res.status(500).json({
+            message: "Erreur lors de la récupération des participants."
+        });
+    }
+});
 async function calculerScore(tentativeId, quizId) {
     const resultat = await db.query(
         `SELECT COUNT(*)::INTEGER AS score
@@ -50,6 +79,7 @@ async function calculerScore(tentativeId, quizId) {
 router.post("/", async (req, res) => {
     try {
         const { nom, prenom, cycle } = req.body;
+       
 
         if (
             typeof nom !== "string" ||
@@ -297,13 +327,20 @@ router.post("/:participantId/tentative/:tentativeId/reponses", async (req, res) 
     const participantId = Number(req.params.participantId);
     const tentativeId = Number(req.params.tentativeId);
     const { questionId, optionsIds } = req.body;
+     console.log("participantId valide :", Number.isInteger(participantId) && participantId > 0);
+console.log("tentativeId valide :", Number.isInteger(tentativeId) && tentativeId > 0);
+console.log("questionId valide :", Number.isInteger(questionId) && questionId > 0);
+console.log("optionsIds est un tableau :", Array.isArray(optionsIds));
+console.log("Nombre d'options :", optionsIds.length);
+console.log("Nombre d'options acceptable :", optionsIds.length <= 4);
+console.log("Toutes les options sont des entiers :", optionsIds.every(id => Number.isInteger(id) && id > 0));
+console.log("Aucun doublon :", new Set(optionsIds).size === optionsIds.length);
 
     if (
         !Number.isInteger(participantId) || participantId <= 0 ||
         !Number.isInteger(tentativeId) || tentativeId <= 0 ||
         !Number.isInteger(questionId) || questionId <= 0 ||
         !Array.isArray(optionsIds) ||
-        optionsIds.length < 1 ||
         optionsIds.length > 4 ||
         !optionsIds.every(id => Number.isInteger(id) && id > 0) ||
         new Set(optionsIds).size !== optionsIds.length
@@ -414,6 +451,10 @@ router.post("/:participantId/tentative/:tentativeId/reponses", async (req, res) 
              AND id = ANY($2::INTEGER[])`,
             [questionId, optionsIds]
         );
+        console.log("Question ID :", questionId);
+console.log("Options demandées :", optionsIds);
+console.log("Options trouvées en BD :", optionsResultat.rows);
+console.log("Nombre trouvé :", optionsResultat.rowCount);
 
         if (optionsResultat.rowCount !== optionsIds.length) {
             await client.query("ROLLBACK");
@@ -634,7 +675,7 @@ router.post("/:participantId/tentative/:tentativeId/soumettre", async (req, res)
             await client.query("ROLLBACK");
         }
 
-        console.error("Erreur soumission QCM :", error.message);
+        console.error("Erreur soumission QCM :", error);
 
         res.status(500).json({
             message: "Erreur lors de la soumission du QCM."
